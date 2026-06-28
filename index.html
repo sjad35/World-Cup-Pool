@@ -130,7 +130,7 @@ const DEFAULT_LOCKS = {
 };
 
 let CONFIG=null, ROSTER=[], PICKS={}, USER=null;
-let activeTab="bracket", activeRound="r32", pollTimer=null, tickTimer=null;
+let activeTab="bracket", activeRound="r32", pollTimer=null, tickTimer=null, saveTimer=null;
 
 /* ----- session (real website, localStorage is fine here) ----- */
 function saveSession(){ try{ localStorage.setItem("wc_user", JSON.stringify(USER)); }catch(e){} }
@@ -286,7 +286,7 @@ function wireBracket(){
   if(r.open&&!roundLocked(activeRound)){
     document.querySelectorAll(".team").forEach(t=>t.onclick=()=>{
       const gid=t.dataset.game,team=t.dataset.team,rk=t.dataset.round;
-      PICKS[USER.slug]=PICKS[USER.slug]||{}; PICKS[USER.slug][rk]=PICKS[USER.slug][rk]||{}; PICKS[USER.slug][rk][gid]=team; render();
+      PICKS[USER.slug]=PICKS[USER.slug]||{}; PICKS[USER.slug][rk]=PICKS[USER.slug][rk]||{}; PICKS[USER.slug][rk][gid]=team; render(); scheduleSave();
     });
     const sb=document.getElementById("saveBtn");
     if(sb) sb.onclick=async()=>{
@@ -380,11 +380,26 @@ async function wireAdmin(){
 }
 async function saveConfig(){ const out=Object.assign({},CONFIG); delete out.groupPass; delete out.adminPass; await apiPost({type:"config-update",config:out,adminPass:USER.adminPass}); }
 
+/* debounced auto-save of the current user's picks */
+function scheduleSave(){
+  if(saveTimer) clearTimeout(saveTimer);
+  setText("saveMsg","Saving…");
+  saveTimer=setTimeout(async()=>{
+    try{ await apiPost({type:"picks",slug:USER.slug,picks:PICKS[USER.slug]||{},groupPass:USER.groupPass,adminPass:USER.adminPass}); setText("saveMsg","Saved ✓"); }
+    catch(e){ setText("saveMsg","Save failed: "+e.message); }
+    setTimeout(()=>setText("saveMsg",""),2000);
+  },1000);
+}
+
 /* ----- timers ----- */
 function startTimers(){
   clearInterval(pollTimer); clearInterval(tickTimer);
-  pollTimer=setInterval(async()=>{ if(!USER||activeTab==="admin") return; const before=JSON.stringify({c:CONFIG,r:ROSTER,p:PICKS});
-    try{ await loadAll(); }catch(e){ return; } if(JSON.stringify({c:CONFIG,r:ROSTER,p:PICKS})!==before) render(); },20000);
+  pollTimer=setInterval(async()=>{ if(!USER||activeTab==="admin") return;
+    const mine=JSON.parse(JSON.stringify(PICKS[USER.slug]||{}));
+    const before=JSON.stringify({c:CONFIG,r:ROSTER,p:PICKS});
+    try{ await loadAll(); }catch(e){ return; }
+    PICKS[USER.slug]=mine;
+    if(JSON.stringify({c:CONFIG,r:ROSTER,p:PICKS})!==before) render(); },20000);
   tickTimer=setInterval(()=>{ document.querySelectorAll("[data-cd]").forEach(el=>{ const rk=el.dataset.cd,r=CONFIG&&CONFIG.rounds[rk]; if(!r)return;
     if(roundLocked(rk)) render(); else el.textContent="⏳ Locks in "+fmtCountdown(r.lockISO); }); },1000);
 }
