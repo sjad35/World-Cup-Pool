@@ -1,0 +1,8 @@
+{
+  "name": "world-cup-2026-bracket-pool",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": "22.x"
+  }
+}
